@@ -1,0 +1,756 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>我的第一个JS小游戏</title>
+    <script src="phaser.js"></script>
+    <style>
+      body {
+        margin: 0;
+        padding: 0;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        height: 100vh;
+        overflow: hidden;
+        background: url('res/big_background.jpg') no-repeat center center fixed;
+        background-size: cover;
+        position: relative; /* 为左侧栏定位做准备 */
+      }
+
+      canvas {
+        display: block;
+        margin: 0 auto;
+        border: 2px solid #333;
+        box-shadow: 0 0 20px rgba(0, 0, 0, 0.5);
+      }
+            #game-rules {
+        position: absolute;
+        left: 10px;
+        top: 10px;
+        width: 220px;
+        background: rgba(0, 0, 0, 0.7);
+        color: white;
+        padding: 15px;
+        border-radius: 10px;
+        font-family: "Microsoft YaHei", sans-serif;
+        font-size: 16px;
+        line-height: 1.6;
+        z-index: 10;
+        backdrop-filter: blur(4px);
+        border: 1px solid rgba(255, 255, 255, 0.2);
+      }
+
+      /* 左侧游戏规则面板 */
+      #game-rules h3 {
+        margin-top: 0;
+        color: #ffcc00;
+        text-align: center;
+      }
+
+      #game-rules ul {
+        padding-left: 20px;
+        margin-bottom: 0;
+      }
+
+      #game-rules li {
+        margin-bottom: 8px;
+      }
+    </style>
+</head>
+<body>
+        <!-- 新增：游戏规则说明 -->
+    <div id="game-rules">
+        <h3>🎮 游戏规则</h3>
+        <ul>
+            <li><strong>↑</strong>：跳跃</li>
+            <li><strong>← →</strong>：左右移动</li>
+            <li><strong>空格键</strong>：
+                <ul style="margin-top: 5px; margin-bottom: 0;">
+                    <li>• 开始游戏</li>
+                    <li>• 获得金币后：释放“半月斩”</li>
+                </ul>
+            </li>
+        </ul>
+    </div>
+    <script>
+        var config = {
+  type: Phaser.AUTO,
+  width: 1208,
+  height: 668,
+  physics: {
+    default: "arcade",
+    arcade: {
+      gravity: {
+        y: 800,
+      },
+      debug: false,
+    },
+  },
+  scene: {
+    preload: preload,
+    create: create,
+    update: update,
+  },
+};
+var game = new Phaser.Game(config);
+
+// 地图宽度 - 增加50%
+var MAP_WIDTH = 3600;
+var gameOver = false;
+var gameStarted = false;
+var cursors;
+var characterSelected = false;
+var selectedCharacter = 'xiyangyang';
+
+// 进度条相关变量
+var progressBar;
+var progressText;
+var progressBox;
+var playerStartX = 100;
+var progressPercentage = 0;
+var coins;
+var playerIsRed = false;
+var lasers;
+var laserKey;
+var diren; // <-- 添加这行
+
+function preload() {
+    this.load.image("background", "res/background.jpg");
+    this.load.image("brick", "res/brick.png");
+    this.load.image("enemy", "res/enemy.png");
+    this.load.image("ground", "res/ground.png");
+    this.load.image("bullet", "res/bullet.png"); 
+    this.load.image("xijundawang_stand", "res/xijundawang_stand.png");
+    this.load.image("xijundawang_walk", "res/xijundawang_walk.png");
+    this.load.image("start", "res/start.jpg");
+    this.load.image("gameover", "res/gameover.jpg");
+    this.load.image("success", "res/success.jpg");
+    
+    // 加载角色图片
+    this.load.image("xiyangyang_stand", "res/xiyangyang_stand.png");
+    this.load.image("xiyangyang_walk", "res/xiyangyang_walk.png");
+    this.load.image("meiyangyang_stand", "res/meiyangyang_stand.png");
+    this.load.image("meiyangyang_walk", "res/meiyangyang_walk.png");
+    this.load.image("huitailang_stand", "res/huitailang_stand.png");
+    this.load.image("huitailang_walk", "res/huitailang_walk.png");
+    
+    // 加载终点图片
+    this.load.image("zhongdian", "res/zhongdian.png");
+    this.load.image("coin", "res/coin.png");
+    this.load.image("jiguang", "res/jiguang.png");
+    this.load.image("diren", "res/diren.png");
+    
+    // 加载音效
+    this.load.audio("jumpSound", "res/jump.mp3");
+    this.load.audio("gameoverSound", "res/gameover.mp3");
+    this.load.audio("successSound", "res/success.mp3");
+    this.load.audio("backgroundMusic", "res/background.mp3");
+     
+}
+
+function create() {
+    // 初始化键盘输入
+    cursors = this.input.keyboard.createCursorKeys();
+    
+    // 显示开始界面
+    startScreen = this.add.image(config.width / 2, config.height / 2, "start").setScale(1);
+    
+    // 监听空格键
+    spaceKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
+    
+    // 初始化音效
+    jumpSound = this.sound.add("jumpSound");
+    gameoverSound = this.sound.add("gameoverSound");
+    successSound = this.sound.add("successSound");
+    backgroundMusic = this.sound.add("backgroundMusic", { loop: true });
+    backgroundMusic.play();
+    laserKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
+lasers = this.physics.add.group();
+}
+
+function showCharacterSelection() {
+    // 移除开始界面
+    startScreen.destroy();
+    
+    // 添加选择角色文字
+    var selectText = this.add.text(config.width / 2, 100, '选择你的角色', {
+        fontSize: '48px',
+        fill: '#ffffff',
+        fontStyle: 'bold',
+        stroke: '#000000',
+        strokeThickness: 6
+    }).setOrigin(0.5);
+    
+    // 创建角色选择区域
+    var characterSpacing = 200;
+    var startX = config.width / 2 - characterSpacing;
+    
+    // 喜羊羊
+    var xiyangyang = this.add.image(startX, config.height / 2, "xiyangyang_stand")
+        .setScale(0.2)
+        .setInteractive({ useHandCursor: true });
+    
+    // 美羊羊
+    var meiyangyang = this.add.image(startX + characterSpacing, config.height / 2, "meiyangyang_stand")
+        .setScale(0.2)
+        .setInteractive({ useHandCursor: true });
+    
+    // 灰太狼
+    var huitailang = this.add.image(startX + characterSpacing * 2, config.height / 2, "huitailang_stand")
+        .setScale(0.2)
+        .setInteractive({ useHandCursor: true });
+    
+    // 添加角色名字
+    this.add.text(startX, config.height / 2 + 80, '喜羊羊', {
+        fontSize: '24px',
+        fill: '#ffffff',
+        fontStyle: 'bold'
+    }).setOrigin(0.5);
+    
+    this.add.text(startX + characterSpacing, config.height / 2 + 80, '美羊羊', {
+        fontSize: '24px',
+        fill: '#ffffff',
+        fontStyle: 'bold'
+    }).setOrigin(0.5);
+    
+    this.add.text(startX + characterSpacing * 2, config.height / 2 + 80, '灰太狼', {
+        fontSize: '24px',
+        fill: '#ffffff',
+        fontStyle: 'bold'
+    }).setOrigin(0.5);
+    
+    // 添加选择框（初始隐藏）
+    var selectionBox = this.add.graphics();
+    selectionBox.lineStyle(4, 0xffff00, 1);
+    selectionBox.strokeRect(-75, -75, 150, 150);
+    selectionBox.setVisible(false);
+    
+    // 保存当前场景的引用
+    var currentScene = this;
+    var confirmButton = null;
+    
+    // 角色悬停效果
+    [xiyangyang, meiyangyang, huitailang].forEach(character => {
+        character.on('pointerover', function() {
+            this.setScale(0.22);
+            this.setTint(0xcccccc);
+        });
+        
+        character.on('pointerout', function() {
+            this.setScale(0.2);
+            this.clearTint();
+        });
+        
+        character.on('pointerdown', function() {
+            // 隐藏选择框
+            selectionBox.setVisible(false);
+            
+            // 在选择角色上显示黄色选择框
+            selectionBox.setPosition(this.x, this.y);
+            selectionBox.setVisible(true);
+            
+            // 设置选中的角色
+            if (this.texture.key === 'xiyangyang_stand') {
+                selectedCharacter = 'xiyangyang';
+            } else if (this.texture.key === 'meiyangyang_stand') {
+                selectedCharacter = 'meiyangyang';
+            } else if (this.texture.key === 'huitailang_stand') {
+                selectedCharacter = 'huitailang';
+            }
+            
+            // 如果已经有确认按钮，先销毁
+            if (confirmButton) {
+                confirmButton.destroy();
+            }
+            
+            // 显示确认按钮
+            confirmButton = currentScene.add.text(config.width / 2, config.height - 100, '确认选择', {
+                fontSize: '36px',
+                fill: '#ffffff',
+                backgroundColor: '#4CAF50',
+                padding: { x: 20, y: 10 }
+            }).setOrigin(0.5).setInteractive({ useHandCursor: true });
+            
+            confirmButton.on('pointerover', function() {
+                this.setFill('#ffff00');
+                this.setBackgroundColor('#45a049');
+            });
+            
+            confirmButton.on('pointerout', function() {
+                this.setFill('#ffffff');
+                this.setBackgroundColor('#4CAF50');
+            });
+            
+            confirmButton.on('pointerdown', function() {
+                characterSelected = true;
+                selectText.destroy();
+                xiyangyang.destroy();
+                meiyangyang.destroy();
+                huitailang.destroy();
+                selectionBox.destroy();
+                this.destroy();
+                
+                // 使用保存的场景引用调用startGame
+                startGame.call(currentScene);
+            });
+        });
+    });
+}
+
+function startGame() {
+    // 设置世界边界
+    this.physics.world.setBounds(0, 0, MAP_WIDTH, 668);
+    
+    // 背景
+    background = this.add.tileSprite(0, 0, MAP_WIDTH, 668, "background").setOrigin(0, 0).setScale(4);
+    
+    // 根据选择的角色创建玩家
+    var standTexture = selectedCharacter + '_stand';
+    var walkTexture = selectedCharacter + '_walk';
+    
+    player = this.physics.add.sprite(100, 400, standTexture).setScale(0.1);
+    if (this.sys.game.config.renderType === Phaser.WEBGL) {
+    player.setPipeline('GlowFX');
+    player.glowEnabled = false;
+    player.glowColor = 0xffff00; // 金色
+    player.glowOuterStrength = 6; // 发光强度
+    player.glowInnerStrength = 0;
+}
+    player.setCollideWorldBounds(true);
+    playerState = "standing";
+
+    
+    // 存储角色纹理
+    player.standTexture = standTexture;
+    player.walkTexture = walkTexture;
+    player.jumpTexture = standTexture;
+    
+    // 创建进度条
+    createProgressBar.call(this);
+    
+    // 平台组
+    platforms = this.physics.add.staticGroup();
+    
+    // 地面 - 死亡区域
+    deathZone = this.physics.add.staticGroup();
+    for (let x = 0; x < MAP_WIDTH; x += 120) {
+        deathZone.create(x, 650, "ground").setScale(0.5, 0.5).setTint(0xff0000).refreshBody();
+    }
+    
+    // 创建平台 - 延长了地图，增加了更多平台
+    platforms.create(110, 600, "brick").setScale(0.5).refreshBody();
+    platforms.create(230, 600, "brick").setScale(0.5).refreshBody();
+    platforms.create(500, 500, "brick").setScale(0.5).refreshBody();
+    platforms.create(620, 500, "brick").setScale(0.5).refreshBody();
+    platforms.create(740, 500, "brick").setScale(0.5).refreshBody();
+    platforms.create(860, 500, "brick").setScale(0.5).refreshBody();
+    platforms.create(1000, 550, "brick").setScale(0.5).refreshBody();
+    platforms.create(1230, 450, "brick").setScale(0.5).refreshBody();
+    platforms.create(1400,550, "brick").setScale(0.5).refreshBody();
+    platforms.create(1600,550, "brick").setScale(0.5).refreshBody();
+    platforms.create(1800, 450, "brick").setScale(0.5).refreshBody();
+    platforms.create(2000, 350, "brick").setScale(0.5).refreshBody();
+        coins = this.physics.add.staticGroup();
+        coins.create(2000, 320, "coin").setScale(0.08).refreshBody();
+    platforms.create(2200, 450, "brick").setScale(0.5).refreshBody();
+    platforms.create(2400, 550, "brick").setScale(0.5).refreshBody();
+    platforms.create(2520, 550, "brick").setScale(0.5).refreshBody(); // 新增平台
+    platforms.create(2640, 550, "brick").setScale(0.5).refreshBody(); // 新增平台
+    platforms.create(2760, 550, "brick").setScale(0.5).refreshBody(); // 新增平台
+    platforms.create(2880, 550, "brick").setScale(0.5).refreshBody(); // 新增平台
+    // 新敌人 - 上下移动
+diren = this.physics.add.sprite(2880, 400, "diren").setScale(0.1);
+diren.setCollideWorldBounds(true);
+diren.body.setAllowGravity(false);
+diren.setVelocityY(120); // 上下速度
+diren.minY = 300;
+diren.maxY = 500;
+    platforms.create(3000, 550, "brick").setScale(0.5).refreshBody(); // 新增平台
+    platforms.create(3200, 500, "brick").setScale(0.5).refreshBody(); // 新增平台
+    
+    // 终点平台
+    var endPlatform = platforms.create(MAP_WIDTH - 100, 500, "brick").setScale(0.5).setTint(0x00ff00).refreshBody();
+    
+    // 在终点平台上方添加终点标志
+    var endFlag = this.add.image(MAP_WIDTH - 100, 500, "zhongdian");
+    endFlag.setScale(0.2); // 调整大小以适应场景
+    endFlag.setOrigin(0.5, 1); // 设置原点在底部中心
+    
+    // 敌人
+    enemy = this.physics.add.sprite(1600, 200, "enemy").setScale(0.1);
+    enemy.setCollideWorldBounds(true);
+    enemy.body.setAllowGravity(false);
+    enemy.setVelocityY(100);
+    
+    // 炮弹组
+    bullets = this.physics.add.group();
+    
+    // 发射炮弹的计时器
+    bulletTimer = this.time.addEvent({
+        delay: 1500,
+        callback: shootBullet,
+        callbackScope: this,
+        loop: true
+    });
+    
+    // 细菌大王
+    xijundawang = this.physics.add.sprite(620, 450, "xijundawang_walk").setScale(0.1);
+    xijundawang.setCollideWorldBounds(false);
+    xijundawang.body.setAllowGravity(false);
+    xijundawang.setVelocityX(100);
+    xijundawang.direction = 1;
+    xijundawang.alive = true;
+    
+    // 设置细菌大王的移动范围
+    xijundawang.leftBound = 500;
+    xijundawang.rightBound = 860;
+    
+    // 提示文字
+    var tip1 = this.add.text(500, 400, '可以从上方踩死细菌大王哦！', { 
+        fontSize: '20px', 
+        fill: '#ffff00',
+        stroke: '#000',
+        strokeThickness: 3,
+        padding: { x: 10, y: 5 }
+    }).setOrigin(0.5);
+    
+    var tip2 = this.add.text(1000, 300, '小心不要被炸弹碰到！', { 
+        fontSize: '20px', 
+        fill: '#ff0000',
+        stroke: '#000',
+        strokeThickness: 3,
+        padding: { x: 10, y: 5 }
+    }).setOrigin(0.5);
+    
+    // 在新增区域添加更多提示
+    var tip3 = this.add.text(2000, 250, '吃了可以获得“半月斩”技能哦！点空格', { 
+        fontSize: '20px', 
+        fill: '#00ff00',
+        stroke: '#000',
+        strokeThickness: 3,
+        padding: { x: 10, y: 5 }
+    }).setOrigin(0.5);
+    
+    var tip4 = this.add.text(2500, 350, '试试跳起来点空格连发！', { 
+        fontSize: '20px', 
+        fill: '#ff00ff',
+        stroke: '#000',
+        strokeThickness: 3,
+        padding: { x: 10, y: 5 }
+    }).setOrigin(0.5);
+
+            this.physics.add.overlap(player, coins, collectCoin, null, this);
+    // 碰撞检测
+    this.physics.add.collider(player, platforms);
+    this.physics.add.collider(player, deathZone, hitDeathZone, null, this);
+    this.physics.add.collider(player, bullets, hitBullet, null, this);
+    this.physics.add.collider(bullets, platforms, bulletHitPlatform, null, this);
+    this.physics.add.collider(player, xijundawang, hitXijundawang, null, this);
+    this.physics.add.collider(lasers, enemy, hitEnemyWithLaser, null, this);
+this.physics.add.collider(lasers, xijundawang, hitEnemyWithLaser, null, this);
+this.physics.add.collider(lasers, platforms, destroyLaser, null, this);
+// 玩家碰到新敌人 → 死亡
+this.physics.add.collider(player, diren, hitDiren, null, this);
+
+// 激光击中新敌人 → 消失
+this.physics.add.collider(lasers, diren, hitEnemyWithLaser, null, this);
+    // 设置相机
+    this.cameras.main.setBounds(0, 0, MAP_WIDTH, 668);
+    this.cameras.main.startFollow(player);
+    this.cameras.main.setFollowOffset(-config.width / 4, 0);
+    
+    gameStarted = true;
+}
+
+// 收集金币函数
+function collectCoin(player, coin) {
+    coin.disableBody(true, true);
+    player.setTint(0xff0000);
+    playerIsRed = true;
+}
+// 创建进度条函数
+function createProgressBar() {
+    // 进度条背景框
+    progressBox = this.add.graphics();
+    progressBox.fillStyle(0x222222, 0.8);
+    progressBox.fillRect(20, 20, 200, 30);
+    progressBox.setScrollFactor(0);
+    
+    // 进度条
+    progressBar = this.add.graphics();
+    progressBar.setScrollFactor(0);
+    
+    // 进度文本
+    progressText = this.add.text(110, 35, '0%', { 
+        fontSize: '18px', 
+        fill: '#ffffff',
+        fontStyle: 'bold'
+    }).setOrigin(0.5);
+    progressText.setScrollFactor(0);
+    
+    // 更新进度条初始状态
+    updateProgressBar.call(this);
+}
+
+// 更新进度条函数
+function updateProgressBar() {
+    var totalDistance = MAP_WIDTH - 250;
+    var currentDistance = Math.max(0, player.x - playerStartX);
+    progressPercentage = Math.min(100, Math.round((currentDistance / totalDistance) * 100));
+    
+    // 清除之前的进度条
+    progressBar.clear();
+    
+    // 绘制进度条
+    progressBar.fillStyle(0x444444, 1);
+    progressBar.fillRect(22, 22, 196, 26);
+    
+    var fillColor;
+    if (progressPercentage < 30) {
+        fillColor = 0xff0000;
+    } else if (progressPercentage < 70) {
+        fillColor = 0xffff00;
+    } else {
+        fillColor = 0x00ff00;
+    }
+    
+    var fillWidth = (196 * progressPercentage) / 100;
+    progressBar.fillStyle(fillColor, 1);
+    progressBar.fillRect(22, 22, fillWidth, 26);
+    
+    // 更新进度文本
+    progressText.setText(progressPercentage + '%');
+}
+
+function update() {
+    if (!gameStarted) {
+        if (Phaser.Input.Keyboard.JustDown(spaceKey)) {
+            showCharacterSelection.call(this);
+        }
+        return;
+    }
+    
+    if (gameOver) return;
+    if (playerIsRed && Phaser.Input.Keyboard.JustDown(laserKey)) {
+    shootLaser.call(this);
+}
+    
+    // 设置人物在x方向的速度为0
+    player.setVelocityX(0);
+    
+    // 滚动背景
+    background.tilePositionX = this.cameras.main.scrollX * 0.5;
+    
+    // 跳跃
+    if (cursors.up.isDown && player.body.onFloor()) {
+        player.setVelocityY(-450);
+        playerState = "jumping";
+        player.setTexture(player.standTexture);
+        jumpSound.play();
+    }
+    
+    // 站立状态
+    if (playerState !== "jumping" && player.body.velocity.x === 0) {
+        playerState = "standing";
+        player.setTexture(player.standTexture);
+    }
+    
+    // 左右移动
+    if (cursors.left.isDown) {
+        player.setVelocityX(-250);
+        player.setFlipX(true);
+        if (playerState !== "jumping") {
+            playerState = "walking";
+            player.setTexture(player.walkTexture);
+        }
+    } else if (cursors.right.isDown) {
+        player.setVelocityX(250);
+        player.setFlipX(false);
+        if (playerState !== "jumping") {
+            playerState = "walking";
+            player.setTexture(player.walkTexture);
+        }
+    }
+    
+    // 检测是否落地
+    if (playerState == "jumping" && player.body.onFloor()) {
+        playerState = "standing";
+        player.setTexture(player.standTexture);
+    }
+    
+    // 更新进度条
+    updateProgressBar.call(this);
+    
+    // 敌人上下移动
+    if (enemy.y >= 400) {
+        enemy.setVelocityY(-100);
+    } else if (enemy.y <= 100) {
+        enemy.setVelocityY(100);
+    }
+    // 新敌人上下移动
+if (diren && diren.active) {
+    if (diren.y >= diren.maxY) {
+        diren.setVelocityY(-120);
+    } else if (diren.y <= diren.minY) {
+        diren.setVelocityY(120);
+    }
+}
+
+    // 细菌大王左右移动
+    if (xijundawang.alive) {
+        if (xijundawang.x >= xijundawang.rightBound) {
+            xijundawang.direction = -1;
+            xijundawang.setVelocityX(-100);
+            xijundawang.setFlipX(true);
+        } else if (xijundawang.x <= xijundawang.leftBound) {
+            xijundawang.direction = 1;
+            xijundawang.setVelocityX(100);
+            xijundawang.setFlipX(false);
+        }
+    }
+    
+    // 检查通关
+    if (player.x >= MAP_WIDTH - 150 && player.body.onFloor()) {
+        gameOver = true;
+        backgroundMusic.stop();
+        successSound.play();
+        
+        // 显示成功界面
+        this.add.image(config.width / 2, config.height / 2, "success")
+            .setDisplaySize(config.width, config.height)
+            .setScrollFactor(0);
+        
+        // 停止敌人和炮弹
+        enemy.setVelocity(0, 0);
+        bulletTimer.remove();
+    }
+}
+
+function shootBullet() {
+    if (gameOver) return;
+    
+    var bullet = bullets.create(enemy.x, enemy.y, "bullet");
+    if (!bullet) return;
+    
+    bullet.setScale(0.05);
+    bullet.setTint(0xff0000);
+    bullet.body.setAllowGravity(false);
+    bullet.setVelocityX(-300);
+    
+    bullet.setCollideWorldBounds(false);
+    bullet.checkWorldBounds = true;
+    bullet.outOfBoundsKill = true;
+}
+
+function hitBullet(player, bullet) {
+    if (gameOver) return;
+    
+    bullet.destroy();
+    hitDeathZone.call(this);
+}
+
+function bulletHitPlatform(bullet, platform) {
+    bullet.destroy();
+}
+
+function hitDeathZone() {
+    if (gameOver) return;
+    
+    gameOver = true;
+    backgroundMusic.stop();
+    gameoverSound.play();
+    
+    this.physics.pause();
+    player.setTint(0xff0000);
+    
+    // 显示游戏结束界面
+    this.add.image(config.width / 2, config.height / 2, "gameover")
+        .setDisplaySize(config.width, config.height)
+        .setScrollFactor(0);
+}
+
+function hitXijundawang(player, xijundawang) {
+    if (gameOver) return;
+    
+    // 检查玩家是否从上方踩到细菌大王
+    if (player.body.velocity.y > 0 && player.body.bottom <= xijundawang.body.top + 10) {
+        // 踩死细菌大王
+        xijundawang.alive = false;
+        xijundawang.setVelocity(0, 0);
+        xijundawang.setTint(0x888888);
+        xijundawang.body.enable = false;
+        
+        // 给玩家一个反弹力
+        player.setVelocityY(-300);
+        
+        // 一秒后消失
+        this.time.delayedCall(1000, function() {
+            xijundawang.destroy();
+        }, [], this);
+    } else {
+        // 玩家碰到细菌大王侧面，游戏结束
+        gameOver = true;
+        backgroundMusic.stop();
+        gameoverSound.play();
+        
+        this.physics.pause();
+        player.setTint(0xff0000);
+        
+        // 显示游戏结束界面
+        this.add.image(config.width / 2, config.height / 2, "gameover")
+            .setDisplaySize(config.width, config.height)
+            .setScrollFactor(0);
+    }
+}
+function shootLaser() {
+    if (!player || !player.active || !playerIsRed) return;
+
+    // 创建炸弹（使用 jiguang.png）
+    var bomb = lasers.create(player.x + 30, player.y, "jiguang");
+    
+    if (!bomb) return;
+
+    bomb.setScale(0.1);
+    bomb.body.setAllowGravity(false);
+    bomb.setVelocityX(500); // 固定向右，速度可调
+
+    // 离开世界边界时自动销毁
+    bomb.checkWorldBounds = true;
+    bomb.outOfBoundsKill = true;
+}
+function hitEnemyWithLaser(laser, enemy) {
+    laser.destroy();
+    if (enemy === xijundawang && xijundawang.alive) {
+        xijundawang.alive = false;
+        xijundawang.setVelocity(0, 0);
+        xijundawang.setTint(0x888888);
+        xijundawang.body.enable = false;
+        this.time.delayedCall(1000, function() {
+            xijundawang.destroy();
+        }, [], this);
+    }
+}
+
+function destroyLaser(laser, platform) {
+    laser.destroy();
+}
+function hitDiren(player, diren) {
+    if (gameOver) return;
+    
+    gameOver = true;
+    backgroundMusic.stop();
+    gameoverSound.play();
+    
+    this.physics.pause();
+    player.setTint(0xff0000);
+    
+    // 显示游戏结束界面
+    this.add.image(config.width / 2, config.height / 2, "gameover")
+        .setDisplaySize(config.width, config.height)
+        .setScrollFactor(0);
+}
+    </script>
+</body>
+</html>
